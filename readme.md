@@ -21,75 +21,75 @@
 ```javascript
 // raito-waterfall部分代码
 export default {
-		methods: {
-			generateRenderList() {
-				const renderList = []
-				const {
-					columnCount,
-					columnWidth,
-					skeletonHeight,
-					gutter,
-					lrPading,
-					keyName,
-					cache
-				} = this
-				const columnHeights = new Array(columnCount).fill(0);
+	methods: {
+		generateRenderList() {
+			const renderList = []
+			const {
+				columnCount,
+				columnWidth,
+				skeletonHeight,
+				gutter,
+				lrPading,
+				keyName,
+				cache
+			} = this
+			const columnHeights = new Array(columnCount).fill(0);
+		
+			if (!keyName) {
+				throw new Error('keyName is required!')
+			}
 			
-				if (!keyName) {
-					throw new Error('keyName is required!')
+			this.data.forEach((item, index) => {
+				const itemKey = item[keyName]
+				
+				if (!cache[itemKey]) {
+					cache[itemKey] = {
+						top: 0,
+						left: 0,
+						width: columnWidth,	// item宽度
+						height: skeletonHeight // 骨架屏高度
+					}
 				}
 				
-				this.data.forEach((item, index) => {
-					const itemKey = item[keyName]
-					
-					if (!cache[itemKey]) {
-						cache[itemKey] = {
-							top: 0,
-							left: 0,
-							width: columnWidth,	// item宽度
-							height: skeletonHeight // 骨架屏高度
-						}
-					}
-					
-					if (index < columnCount) {
-						cache[itemKey].top = 0
-						cache[itemKey].left = lrPading + index * (columnWidth + gutter)
-						columnHeights[index] += cache[itemKey].height
-					} else {
-						const minHeight = Math.min(...columnHeights)
-						const minIndex = columnHeights.indexOf(minHeight);
-						cache[itemKey].top = minHeight + gutter
-						cache[itemKey].left = lrPading + minIndex * (columnWidth + gutter)
-						columnHeights[minIndex] += cache[itemKey].height + gutter
-					}
-			
-					renderList.push({
-						...item,
-						_layoutRect: cache[itemKey],
-						_renderKey: itemKey
-					})
+				if (index < columnCount) {
+					cache[itemKey].top = 0
+					cache[itemKey].left = lrPading + index * (columnWidth + gutter)
+					columnHeights[index] += cache[itemKey].height
+				} else {
+					const minHeight = Math.min(...columnHeights)
+					const minIndex = columnHeights.indexOf(minHeight);
+					cache[itemKey].top = minHeight + gutter
+					cache[itemKey].left = lrPading + minIndex * (columnWidth + gutter)
+					columnHeights[minIndex] += cache[itemKey].height + gutter
+				}
+		
+				renderList.push({
+					...item,
+					_layoutRect: cache[itemKey],
+					_renderKey: itemKey
 				})
+			})
+		
+			const maxHeight = Math.max(...columnHeights)
 			
-				const maxHeight = Math.max(...columnHeights)
-				
-				return {
-					renderList,
-					maxHeight
-				}
-			},
-			startRender() {
-				const {
-					maxHeight,
-					renderList
-				} = this.generateRenderList()
-				
-				if (!renderList.length) {
-					return
-				}
-				this.renderList = renderList
-				this.waterfallBoxHeight = maxHeight
-			},
-		}
+			return {
+				renderList,
+				maxHeight
+			}
+		},
+		startRender() {
+			const {
+				maxHeight,
+				renderList
+			} = this.generateRenderList()
+			
+			if (!renderList.length) {
+				return
+			}
+			this.renderList = renderList
+			this.waterfallBoxHeight = maxHeight
+		},
+	}
 }
 ```
 
@@ -97,61 +97,61 @@ export default {
 这种情况发生于页面跳转或Tabs切换，导致获取不到元素的boundingClientRect，也就获取不到元素的高度，于是会导致计算错误。
 ```javascript
 function getRect(selector, context) {
-		return new Promise((resolve, reject) => {
-			const query = uni.createSelectorQuery().in(context);
-			query
-				.select(selector)
-				.boundingClientRect(rect => {
-					rect ? resolve(rect) : reject('Not Found');
-				})
-				.exec();
-		});
+	return new Promise((resolve, reject) => {
+		const query = uni.createSelectorQuery().in(context);
+		query
+			.select(selector)
+			.boundingClientRect(rect => {
+				rect ? resolve(rect) : reject('Not Found');
+			})
+			.exec();
+	});
 }
 ```
 可以这样解决：当createSelectorQuery获取不到boundingClientRect时，使用createIntersectionObserver来监听元素，这样同样可以获取得到boundingClientRect。当重新回到页面或Tabs切换回来时，intersectionObserver会被触发。
 ```javascript
 // raito-waterfall-item部分代码
 export default {
-		mounted() {
-			this.getExtraBoxWH().finally(() => {
-				/* 可能由于页面跳转、元素隐藏导致获取不到宽度和高度,于是通过监听元素来重新获取高度 */
-				if (!this.contentRect.extraBoxWidth || !this.contentRect.extraBoxHeight) {
-					this.startObserver();
+	mounted() {
+		this.getExtraBoxWH().finally(() => {
+			/* 可能由于页面跳转、元素隐藏导致获取不到宽度和高度,于是通过监听元素来重新获取高度 */
+			if (!this.contentRect.extraBoxWidth || !this.contentRect.extraBoxHeight) {
+				this.startObserver();
+			}
+		});
+	},
+	beforeDestroy() {
+		if (this.intersectionObserver) {
+			this.intersectionObserver.disconnect();
+			this.intersectionObserver = null;
+		}
+	},
+	methods: {
+		startObserver() {
+			this.intersectionObserver = uni.createIntersectionObserver(this, {
+				thresholds: [0, 1],
+				initialRatio: 0,
+				observeAll: false
+			});
+			this.intersectionObserver.relativeToViewport();
+			this.intersectionObserver.observe('.content-box__extra', res => {
+				const { width, height } = res.boundingClientRect;
+				this.contentRect.extraBoxWidth = width;
+				this.contentRect.extraBoxHeight = height;
+				this.intersectionObserver.disconnect();
+				this.intersectionObserver = null;
+			});
+		},
+		// 获取extraBox的宽高
+		getExtraBoxWH() {
+			return getRect('.content-box__extra', this).then(rect => {
+				if (rect) {
+					this.contentRect.extraBoxWidth = rect.width;
+					this.contentRect.extraBoxHeight = rect.height;
 				}
 			});
 		},
-		beforeDestroy() {
-			if (this.intersectionObserver) {
-				this.intersectionObserver.disconnect();
-				this.intersectionObserver = null;
-			}
-		},
-		methods: {
-			startObserver() {
-				this.intersectionObserver = uni.createIntersectionObserver(this, {
-					thresholds: [0, 1],
-					initialRatio: 0,
-					observeAll: false
-				});
-				this.intersectionObserver.relativeToViewport();
-				this.intersectionObserver.observe('.content-box__extra', res => {
-					const { width, height } = res.boundingClientRect;
-					this.contentRect.extraBoxWidth = width;
-					this.contentRect.extraBoxHeight = height;
-					this.intersectionObserver.disconnect();
-					this.intersectionObserver = null;
-				});
-			},
-			// 获取extraBox的宽高
-			getExtraBoxWH() {
-				return getRect('.content-box__extra', this).then(rect => {
-					if (rect) {
-						this.contentRect.extraBoxWidth = rect.width;
-						this.contentRect.extraBoxHeight = rect.height;
-					}
-				});
-			},
-		}
+	}
 }
 ```
 
@@ -159,27 +159,27 @@ export default {
 ```javascript
 import { isArraysEqual, throttle } from '../../util.js'
 export default {
-		created() {
-			this.throttleRender = throttle(this.startRender.bind(this), 100) // 防止频繁调用
-			this.handleDataChange = throttle(this.handleDataChange.bind(this), 100)	// 防止频繁调用
-			this.$watch('data', this.handleDataChange, {
-				deep: true,
-				immediate: true
-			})
+	created() {
+		this.throttleRender = throttle(this.startRender.bind(this), 100) // 防止频繁调用
+		this.handleDataChange = throttle(this.handleDataChange.bind(this), 100)	// 防止频繁调用
+		this.$watch('data', this.handleDataChange, {
+			deep: true,
+			immediate: true
+		})
+	},
+	methods: {
+		onHeightChange(item, height) {
+			const itemKey = item._renderKey
+			this.cache[itemKey].height = height	
+			this.throttleRender()
 		},
-		methods: {
-			onHeightChange(item, height) {
-				const itemKey = item._renderKey
-				this.cache[itemKey].height = height	
-				this.throttleRender()
-			},
-			handleDataChange(newData, oldData) {
-				if (isArraysEqual(newData, oldData)) {
-					return
-				}
-				this.startRender()
-			},
-		}
+		handleDataChange(newData, oldData) {
+			if (isArraysEqual(newData, oldData)) {
+				return
+			}
+			this.startRender()
+		},
+	}
 }
 ```
 
