@@ -1,0 +1,14 @@
+{
+  "name": "raito-waterfall",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/Raito-Liao/raito-waterfall.git",
+  "author": "Raito Liao <raito.liao@outlook.com>",
+  "scripts": {
+    "deploy": "gh-pages -d unpackage/dist/build/h5"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "gh-pages": "^6.1.1"
+  }
+}
